@@ -1,0 +1,368 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USUÁRIO (advogado titular) ───────────────────────────────────────────
+
+model Usuario {
+  id                String   @id @default(uuid())
+  nome              String
+  email             String   @unique
+  senhaHash         String
+  oabNumero               String?
+  oabUf                   String?
+  nomeCompleto            String?  // nome exato conforme PJe para consulta DJEN
+  googleRefreshToken      String?  // token para Google Calendar
+  googleCalendarConnected Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  clientes          Cliente[]
+  processos         Processo[]
+  leads             Lead[]
+}
+
+// ─── CLIENTE ─────────────────────────────────────────────────────────────
+
+model Cliente {
+  id                  String    @id @default(uuid())
+  usuarioId           String
+  usuario             Usuario   @relation(fields: [usuarioId], references: [id])
+
+  nomeCompleto        String
+  cpf                 String
+  email               String?
+  celular             String
+  dataNascimento      DateTime?
+  lembreteAniversario Boolean   @default(false)
+
+  // Endereço
+  cep                 String?
+  logradouro          String?
+  numero              String?
+  complemento         String?
+  bairro              String?
+  cidade              String?
+  estado              String?
+  pais                String?   @default("Brasil")
+
+  // Módulo família
+  moduloFamilia       Boolean   @default(false)
+
+  // Asaas
+  asaasId             String?   // ID do cliente no Asaas
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  processos           Processo[]
+  arquivos            Arquivo[]
+  honorarios          Honorario[]
+  leads               Lead[]
+
+  @@index([usuarioId])
+}
+
+// ─── PROCESSO ────────────────────────────────────────────────────────────
+
+model Processo {
+  id                String         @id @default(uuid())
+  usuarioId         String
+  usuario           Usuario        @relation(fields: [usuarioId], references: [id])
+  clienteId         String
+  cliente           Cliente        @relation(fields: [clienteId], references: [id])
+
+  numeroCnj         String
+  tipoAcao          TipoAcao
+  faseProcessual    FaseProcessual?
+  varaJuizo         String?
+  comarcaTribunal   String?
+  dataDistribuicao  DateTime?
+  valorCausa        Decimal?       @db.Decimal(15, 2)
+  status            StatusProcesso @default(EM_ANDAMENTO)
+
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  andamentos        Andamento[]
+  prazos            Prazo[]
+  publicacoes       Publicacao[]
+  honorarios        Honorario[]
+
+  @@index([usuarioId])
+  @@index([clienteId])
+  @@index([numeroCnj])
+}
+
+enum TipoAcao {
+  ALIMENTOS
+  GUARDA
+  DIVORCIO_LITIGIOSO
+  DIVORCIO_CONSENSUAL
+  REGULAMENTACAO_VISITAS
+  PARTILHA_BENS
+  OUTRO
+}
+
+enum FaseProcessual {
+  PETICAO_INICIAL
+  CITACAO
+  INSTRUCAO
+  SENTENCA
+  RECURSO
+  EXECUCAO
+}
+
+enum StatusProcesso {
+  EM_ANDAMENTO
+  SUSPENSO
+  ENCERRADO
+}
+
+// ─── ANDAMENTO ───────────────────────────────────────────────────────────
+
+model Andamento {
+  id            String          @id @default(uuid())
+  processoId    String
+  processo      Processo        @relation(fields: [processoId], references: [id])
+
+  dataAndamento DateTime
+  descricao     String          @db.Text
+  tipo          TipoAndamento?
+  origem        OrigemAndamento @default(MANUAL)
+
+  // Dados extras quando origem = DJEN
+  djenLink      String?
+  djenTexto     String?         @db.Text
+
+  createdAt     DateTime        @default(now())
+
+  arquivos      Arquivo[]
+
+  @@index([processoId])
+}
+
+enum TipoAndamento {
+  DESPACHO
+  SENTENCA
+  PETICAO
+  PUBLICACAO_DJEN
+  AUDIENCIA
+  OUTRO
+}
+
+enum OrigemAndamento {
+  MANUAL
+  DJEN
+}
+
+// ─── PRAZO ───────────────────────────────────────────────────────────────
+
+model Prazo {
+  id              String      @id @default(uuid())
+  processoId      String
+  processo        Processo    @relation(fields: [processoId], references: [id])
+
+  descricao       String
+  tipoPrazo       TipoPrazo
+  dataVencimento  DateTime
+  horario         String?     // ex.: "14:00"
+  diasUteis       Boolean     @default(false)
+  status          StatusPrazo @default(PENDENTE)
+  observacoes     String?     @db.Text
+
+  // Alertas
+  alertaDias5     Boolean     @default(true)
+  alertaDias7     Boolean     @default(true)
+  googleCalendar  Boolean     @default(false)
+  googleEventId   String?     // ID do evento criado no Google Calendar
+
+  // Cumprimento
+  cumpridoEm      DateTime?
+  alertaEnviado5  Boolean     @default(false)
+  alertaEnviado7  Boolean     @default(false)
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([processoId])
+  @@index([dataVencimento])
+  @@index([status])
+}
+
+enum TipoPrazo {
+  FATAL
+  INTERNO
+}
+
+enum StatusPrazo {
+  PENDENTE
+  CUMPRIDO
+  EXPIRADO
+}
+
+// ─── PUBLICAÇÃO DJEN ────────────────────────────────────────────────────
+
+model Publicacao {
+  id                      String            @id @default(uuid())
+  processoId              String?
+  processo                Processo?         @relation(fields: [processoId], references: [id])
+
+  // Dados retornados pela API do PJe
+  djenId                  String            @unique // id retornado pela API
+  dataDisponibilizacao    DateTime
+  tipoComunicacao         String?
+  nomeOrgao               String?
+  texto                   String            @db.Text
+  numeroCnj               String
+  link                    String?
+  meioCompleto            String?
+
+  lida                    Boolean           @default(false)
+  lidaEm                  DateTime?
+
+  createdAt               DateTime          @default(now())
+
+  @@index([processoId])
+  @@index([numeroCnj])
+  @@index([lida])
+}
+
+// ─── ARQUIVO ─────────────────────────────────────────────────────────────
+
+model Arquivo {
+  id          String     @id @default(uuid())
+  clienteId   String?
+  cliente     Cliente?   @relation(fields: [clienteId], references: [id])
+  andamentoId String?
+  andamento   Andamento? @relation(fields: [andamentoId], references: [id])
+
+  nome        String
+  url         String
+  tamanho     Int        // em bytes
+  mimeType    String
+
+  createdAt   DateTime   @default(now())
+}
+
+// ─── FINANCEIRO ──────────────────────────────────────────────────────────
+
+model Honorario {
+  id              String          @id @default(uuid())
+  processoId      String
+  processo        Processo        @relation(fields: [processoId], references: [id])
+  clienteId       String
+  cliente         Cliente         @relation(fields: [clienteId], references: [id])
+
+  valorTotal      Decimal         @db.Decimal(15, 2)
+  descricao       String?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  parcelas        Parcela[]
+}
+
+model Parcela {
+  id            String        @id @default(uuid())
+  honorarioId   String
+  honorario     Honorario     @relation(fields: [honorarioId], references: [id])
+
+  valor          Decimal       @db.Decimal(15, 2)
+  dataVencimento DateTime
+  dataPagamento  DateTime?
+  status         StatusParcela @default(PENDENTE)
+  descricao      String?
+
+  // Asaas
+  asaasId        String?       // ID da cobrança no Asaas
+  asaasPayLink   String?       // Link de pagamento Pix/boleto
+  asaasBillingType String?     // PIX, BOLETO, CREDIT_CARD
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([honorarioId])
+  @@index([dataVencimento])
+  @@index([status])
+}
+
+enum StatusParcela {
+  PENDENTE
+  PAGO
+  VENCIDO
+}
+
+// ─── CRM DE LEADS ────────────────────────────────────────────────────────
+
+model Lead {
+  id          String      @id @default(uuid())
+  usuarioId   String
+  usuario     Usuario     @relation(fields: [usuarioId], references: [id])
+
+  nome        String
+  origem      OrigemLead
+  tipoDemanda TipoDemanda
+  etapa       EtapaLead   @default(NOVO_CONTATO)
+  observacoes String?     @db.Text
+
+  // Quando convertido, vincula ao cliente criado
+  clienteId   String?
+  cliente     Cliente?    @relation(fields: [clienteId], references: [id])
+  convertidoEm DateTime?
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([usuarioId])
+  @@index([etapa])
+}
+
+enum OrigemLead {
+  WHATSAPP
+  INDICACAO
+  INSTAGRAM
+  SITE
+  OUTRO
+}
+
+enum TipoDemanda {
+  ALIMENTOS
+  GUARDA
+  DIVORCIO
+  VISITAS
+  OUTRO
+}
+
+enum EtapaLead {
+  NOVO_CONTATO
+  CONSULTA_AGENDADA
+  PROPOSTA_ENVIADA
+  CONVERTIDO
+  SEM_INTERESSE
+}
+
+// ─── FERIADOS NACIONAIS ──────────────────────────────────────────────────
+
+model Feriado {
+  id    String   @id @default(uuid())
+  data  DateTime @unique
+  nome  String
+  tipo  String   @default("NACIONAL")
+}
+
+// ─── LOG DE AUDITORIA ────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entidade   String   // ex.: "Cliente", "Processo", "Prazo"
+  entidadeId String
+  acao       String   // CREATE, UPDATE, DELETE
+  dados      Json?    // snapshot do que mudou
+  createdAt  DateTime @default(now())
+}
