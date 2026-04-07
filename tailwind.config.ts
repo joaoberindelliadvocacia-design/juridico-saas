@@ -2,9 +2,9 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: [
-    "C:/juridico saas/juridico_saas/juridico-saas/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "C:/juridico saas/juridico_saas/juridico-saas/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "C:/juridico saas/juridico_saas/juridico-saas/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
