@@ -44,7 +44,7 @@ export async function AppShell({ children, titulo }: AppShellProps) {
       <Sidebar badges={badges} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar titulo={titulo} />
-        <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
+        <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-6">
           {children}
         </main>
       </div>

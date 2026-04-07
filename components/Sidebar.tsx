@@ -12,6 +12,8 @@ import {
   DollarSign,
   Settings,
   Scale,
+  CalendarDays,
+  Plug,
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -28,12 +30,14 @@ const navItems = [
   { href: '/clientes', label: 'Clientes', icon: Users, badgeKey: 'clientes' as const },
   { href: '/processos', label: 'Processos', icon: FileText, badgeKey: 'processos' as const },
   { href: '/prazos', label: 'Prazos', icon: Clock, badgeKey: 'prazosUrgentes' as const, badgeRed: true },
+  { href: '/agenda', label: 'Agenda', icon: CalendarDays },
   { href: '/djen', label: 'DJEN', icon: Newspaper, badgeKey: 'djenNaoLidas' as const },
 ]
 
 const navItemsBottom = [
   { href: '/leads', label: 'CRM de leads', icon: TrendingUp },
   { href: '/financeiro', label: 'Financeiro', icon: DollarSign },
+  { href: '/integracoes', label: 'Integrações', icon: Plug },
   { href: '/configuracoes', label: 'Configurações', icon: Settings },
 ]
 
