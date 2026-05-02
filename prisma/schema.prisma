@@ -223,6 +223,9 @@ model Publicacao {
   link                    String?
   meioCompleto            String?
 
+  nomeAdvogado            String?           // Ex: "João Berindelli"
+  oabAdvogado             String?           // Ex: "225.420"
+
   lida                    Boolean           @default(false)
   lidaEm                  DateTime?
 
