@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Search, Eye, EyeOff, Clock, CheckCheck, FileText, Plus, ExternalLink, AlertCircle } from 'lucide-react'
+import { Search, Eye, EyeOff, Clock, CheckCheck, FileText, Plus, ExternalLink, AlertCircle, Filter } from 'lucide-react'
 import ModalPrazo from '@/components/ModalPrazo'
 
 interface Processo {
@@ -20,6 +20,8 @@ interface Publicacao {
   numeroCnj: string
   tipoComunicacao?: string | null
   nomeOrgao?: string | null
+  nomeAdvogado?: string | null
+  oabAdvogado?: string | null
   texto: string
   link?: string | null
   dataDisponibilizacao: string
@@ -30,17 +32,22 @@ interface Publicacao {
 
 type FiltroLida = 'TODAS' | 'NAO_LIDAS' | 'LIDAS'
 
-const TIPO_ACAO_LABEL: Record<string, string> = {
-  ALIMENTOS: 'Alimentos', GUARDA: 'Guarda',
-  DIVORCIO_LITIGIOSO: 'Divórcio Litigioso', DIVORCIO_CONSENSUAL: 'Divórcio Consensual',
-  REGULAMENTACAO_VISITAS: 'Reg. Visitas', PARTILHA_BENS: 'Partilha de Bens', OUTRO: 'Outro',
-}
+const PERIODOS = [
+  { value: '7',  label: 'Últimos 7 dias' },
+  { value: '15', label: 'Últimos 15 dias' },
+  { value: '30', label: 'Últimos 30 dias' },
+  { value: '90', label: 'Últimos 90 dias' },
+]
 
 export default function DjenPage() {
   const [publicacoes, setPublicacoes] = useState<Publicacao[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<FiltroLida>('NAO_LIDAS')
+  const [periodo, setPeriodo] = useState('7')
+  const [nomeAdvogado, setNomeAdvogado] = useState('')
+  const [oabAdvogado, setOabAdvogado] = useState('')
+  const [mostrarFiltros, setMostrarFiltros] = useState(false)
   const [expandida, setExpandida] = useState<string | null>(null)
   const [modalPrazo, setModalPrazo] = useState<{ aberto: boolean; publicacao?: Publicacao }>({ aberto: false })
 
@@ -50,10 +57,13 @@ export default function DjenPage() {
     if (busca) params.set('busca', busca)
     if (filtro === 'NAO_LIDAS') params.set('lida', 'false')
     if (filtro === 'LIDAS') params.set('lida', 'true')
+    if (periodo) params.set('periodo', periodo)
+    if (nomeAdvogado) params.set('nomeAdvogado', nomeAdvogado)
+    if (oabAdvogado) params.set('oabAdvogado', oabAdvogado)
     const res = await fetch(`/api/djen?${params}`)
     if (res.ok) setPublicacoes(await res.json())
     setLoading(false)
-  }, [busca, filtro])
+  }, [busca, filtro, periodo, nomeAdvogado, oabAdvogado])
 
   useEffect(() => {
     const timer = setTimeout(fetchPublicacoes, 300)
@@ -84,11 +94,12 @@ export default function DjenPage() {
   }
 
   const naoLidas = publicacoes.filter(p => !p.lida).length
+  const filtrosAtivos = (nomeAdvogado ? 1 : 0) + (oabAdvogado ? 1 : 0) + (periodo !== '7' ? 1 : 0)
 
   const FILTROS: { key: FiltroLida; label: string; count?: number }[] = [
-    { key: 'TODAS', label: 'Todas' },
+    { key: 'TODAS',     label: 'Todas' },
     { key: 'NAO_LIDAS', label: 'Não lidas', count: naoLidas },
-    { key: 'LIDAS', label: 'Lidas' },
+    { key: 'LIDAS',     label: 'Lidas' },
   ]
 
   return (
@@ -102,20 +113,17 @@ export default function DjenPage() {
           </p>
         </div>
         {naoLidas > 0 && (
-          <button
-            onClick={marcarTodasLidas}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '8px',
-              padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600,
-              border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#64748b', cursor: 'pointer',
-            }}
-          >
+          <button onClick={marcarTodasLidas} style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600,
+            border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#64748b', cursor: 'pointer',
+          }}>
             <CheckCheck size={16} /> Marcar todas como lidas
           </button>
         )}
       </div>
 
-      {/* Aviso de configuração */}
+      {/* Aviso PJe */}
       {!process.env.NEXT_PUBLIC_PJE_CONFIGURADO && (
         <div style={{
           display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px 16px',
@@ -125,15 +133,15 @@ export default function DjenPage() {
           <div>
             <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#92400e' }}>Integração PJe não configurada</p>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#92400e' }}>
-              Para monitorar publicações automaticamente, preencha <code>PJE_NUMERO_OAB</code>, <code>PJE_UF_OAB</code> e <code>PJE_NOME_ADVOGADO</code> no arquivo <code>.env</code>.
+              Preencha <code>PJE_NUMERO_OAB</code>, <code>PJE_UF_OAB</code> e <code>PJE_NOME_ADVOGADO</code> no Vercel para monitorar automaticamente.
             </p>
           </div>
         </div>
       )}
 
-      {/* Busca e filtros */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+      {/* Busca + botão filtros */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
           <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
           <input
             value={busca}
@@ -145,10 +153,97 @@ export default function DjenPage() {
             }}
           />
         </div>
+
+        {/* Botão filtros avançados */}
+        <button
+          onClick={() => setMostrarFiltros(v => !v)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            padding: '10px 16px', borderRadius: '8px', fontSize: '14px', fontWeight: 600,
+            border: `1px solid ${filtrosAtivos > 0 ? '#8B7536' : '#e2e8f0'}`,
+            backgroundColor: filtrosAtivos > 0 ? '#fdf8ee' : 'white',
+            color: filtrosAtivos > 0 ? '#8B7536' : '#64748b', cursor: 'pointer',
+          }}
+        >
+          <Filter size={15} />
+          Filtros
+          {filtrosAtivos > 0 && (
+            <span style={{
+              backgroundColor: '#8B7536', color: 'white',
+              fontSize: '11px', fontWeight: 700, padding: '1px 6px', borderRadius: '999px',
+            }}>{filtrosAtivos}</span>
+          )}
+        </button>
       </div>
 
-      {/* Tabs de filtro */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '0' }}>
+      {/* Painel de filtros avançados */}
+      {mostrarFiltros && (
+        <div style={{
+          backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px',
+          padding: '16px', marginBottom: '16px', display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px',
+        }}>
+          {/* Período */}
+          <div>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
+              Período
+            </label>
+            <select
+              value={periodo}
+              onChange={e => setPeriodo(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', color: '#1e293b', backgroundColor: 'white' }}
+            >
+              {PERIODOS.map(p => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Nome do advogado */}
+          <div>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
+              Nome do Advogado
+            </label>
+            <input
+              value={nomeAdvogado}
+              onChange={e => setNomeAdvogado(e.target.value)}
+              placeholder="Ex: João Berindelli"
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', color: '#1e293b', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          {/* OAB */}
+          <div>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
+              Número OAB
+            </label>
+            <input
+              value={oabAdvogado}
+              onChange={e => setOabAdvogado(e.target.value)}
+              placeholder="Ex: 225.420"
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', color: '#1e293b', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          {/* Limpar filtros */}
+          {filtrosAtivos > 0 && (
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <button
+                onClick={() => { setNomeAdvogado(''); setOabAdvogado(''); setPeriodo('7') }}
+                style={{
+                  padding: '8px 14px', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
+                  border: '1px solid #fca5a5', backgroundColor: 'white', color: '#dc2626', cursor: 'pointer',
+                }}
+              >
+                Limpar filtros
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
         {FILTROS.map(f => (
           <button key={f.key} onClick={() => setFiltro(f.key)} style={{
             padding: '10px 20px', fontSize: '13px', fontWeight: 600, border: 'none', cursor: 'pointer',
@@ -159,10 +254,9 @@ export default function DjenPage() {
           }}>
             {f.label}
             {f.count !== undefined && f.count > 0 && (
-              <span style={{
-                backgroundColor: '#ef4444', color: 'white', fontSize: '11px', fontWeight: 700,
-                padding: '1px 6px', borderRadius: '999px',
-              }}>{f.count}</span>
+              <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '11px', fontWeight: 700, padding: '1px 6px', borderRadius: '999px' }}>
+                {f.count}
+              </span>
             )}
           </button>
         ))}
@@ -179,61 +273,57 @@ export default function DjenPage() {
               {filtro === 'NAO_LIDAS' ? 'Nenhuma publicação não lida' : 'Nenhuma publicação encontrada'}
             </p>
             <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '4px' }}>
-              {filtro === 'NAO_LIDAS' ? 'Você está em dia com o DJEN.' : 'Configure o PJe para receber publicações automaticamente.'}
+              Tente ampliar o período ou ajustar os filtros.
             </p>
           </div>
         ) : (
           publicacoes.map((pub, i) => {
             const aberta = expandida === pub.id
             return (
-              <div
-                key={pub.id}
-                style={{
-                  borderBottom: i < publicacoes.length - 1 ? '1px solid #f1f5f9' : 'none',
-                  backgroundColor: pub.lida ? 'white' : '#fefce8',
-                }}
-              >
-                {/* Linha principal */}
+              <div key={pub.id} style={{
+                borderBottom: i < publicacoes.length - 1 ? '1px solid #f1f5f9' : 'none',
+                backgroundColor: pub.lida ? 'white' : '#fefce8',
+              }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '16px' }}>
                   {/* Indicador lida */}
                   <div style={{ paddingTop: '2px', flexShrink: 0 }}>
-                    {pub.lida
-                      ? <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#cbd5e1' }} />
-                      : <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#3b82f6' }} />
-                    }
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: pub.lida ? '#cbd5e1' : '#3b82f6' }} />
                   </div>
 
                   {/* Conteúdo */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                       {pub.tipoComunicacao && (
-                        <span style={{
-                          padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 600,
-                          backgroundColor: '#eff6ff', color: '#2563eb',
-                        }}>{pub.tipoComunicacao}</span>
+                        <span style={{ padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 600, backgroundColor: '#eff6ff', color: '#2563eb' }}>
+                          {pub.tipoComunicacao}
+                        </span>
                       )}
                       <span style={{ fontFamily: 'monospace', fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
                         {pub.numeroCnj}
                       </span>
-                      {pub.processo && (
+                      {pub.processo ? (
                         <span style={{ fontSize: '12px', color: '#64748b' }}>
                           · {pub.processo.cliente.nomeCompleto}
                           {pub.processo.varaJuizo && ` · ${pub.processo.varaJuizo}`}
                         </span>
-                      )}
-                      {!pub.processo && (
-                        <span style={{
-                          padding: '1px 6px', borderRadius: '4px', fontSize: '11px',
-                          backgroundColor: '#fef9c3', color: '#854d0e',
-                        }}>Processo não cadastrado</span>
+                      ) : (
+                        <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '11px', backgroundColor: '#fef9c3', color: '#854d0e' }}>
+                          Processo não cadastrado
+                        </span>
                       )}
                     </div>
+
+                    {/* Advogado da publicação */}
+                    {(pub.nomeAdvogado || pub.oabAdvogado) && (
+                      <div style={{ fontSize: '12px', color: '#8B7536', marginBottom: '4px', fontWeight: 500 }}>
+                        {pub.nomeAdvogado}{pub.oabAdvogado && ` · OAB ${pub.oabAdvogado}`}
+                      </div>
+                    )}
 
                     {pub.nomeOrgao && (
                       <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>{pub.nomeOrgao}</div>
                     )}
 
-                    {/* Trecho do texto */}
                     <p style={{
                       fontSize: '13px', color: '#475569', lineHeight: '1.5', margin: 0,
                       overflow: aberta ? 'visible' : 'hidden',
@@ -249,21 +339,15 @@ export default function DjenPage() {
                         <Clock size={11} />
                         {format(parseISO(pub.dataDisponibilizacao), "dd/MM/yyyy", { locale: ptBR })}
                       </span>
-
                       <button
                         onClick={() => setExpandida(aberta ? null : pub.id)}
                         style={{ fontSize: '12px', color: '#8B7536', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
                       >
                         {aberta ? 'Ver menos' : 'Ver completo'}
                       </button>
-
                       {pub.link && (
-                        <a
-                          href={pub.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#3b82f6', textDecoration: 'none' }}
-                        >
+                        <a href={pub.link} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#3b82f6', textDecoration: 'none' }}>
                           <ExternalLink size={11} /> Abrir no PJe
                         </a>
                       )}
@@ -275,24 +359,14 @@ export default function DjenPage() {
                     {pub.processo && (
                       <button
                         onClick={() => setModalPrazo({ aberto: true, publicacao: pub })}
-                        title="Criar prazo a partir desta publicação"
-                        style={{
-                          padding: '6px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                          border: '1px solid #8B7536', backgroundColor: 'white', color: '#8B7536', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: '4px',
-                        }}
+                        style={{ padding: '6px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid #8B7536', backgroundColor: 'white', color: '#8B7536', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                       >
                         <Plus size={12} /> Prazo
                       </button>
                     )}
                     <button
                       onClick={() => marcarLida(pub.id, !pub.lida)}
-                      title={pub.lida ? 'Marcar como não lida' : 'Marcar como lida'}
-                      style={{
-                        padding: '6px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                        border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#64748b', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '4px',
-                      }}
+                      style={{ padding: '6px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                     >
                       {pub.lida ? <><EyeOff size={12} /> Não lida</> : <><Eye size={12} /> Lida</>}
                     </button>
@@ -304,7 +378,7 @@ export default function DjenPage() {
         )}
       </div>
 
-      {/* Modal de criar prazo */}
+      {/* Modal prazo */}
       {modalPrazo.aberto && modalPrazo.publicacao?.processo && (
         <ModalPrazo
           processoPreSelecionado={modalPrazo.publicacao.processo as any}
